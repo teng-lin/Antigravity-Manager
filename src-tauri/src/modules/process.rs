@@ -58,18 +58,69 @@ pub fn is_antigravity_running() -> bool {
     false
 }
 
+#[cfg(target_os = "linux")]
+/// 获取当前进程及其所有子进程的 PID 集合
+fn get_self_and_children_pids(system: &sysinfo::System) -> std::collections::HashSet<u32> {
+    let current_pid = std::process::id();
+    let mut self_pids = std::collections::HashSet::new();
+    self_pids.insert(current_pid);
+
+    // 构建父子关系映射 (Parent -> Children)
+    let mut adj: std::collections::HashMap<u32, Vec<u32>> = std::collections::HashMap::new();
+    for (pid, process) in system.processes() {
+        if let Some(parent) = process.parent() {
+            adj.entry(parent.as_u32()).or_default().push(pid.as_u32());
+        }
+    }
+
+    // BFS 遍历查找所有后代
+    let mut queue = std::collections::VecDeque::new();
+    queue.push_back(current_pid);
+
+    while let Some(pid) = queue.pop_front() {
+        if let Some(children) = adj.get(&pid) {
+            for &child in children {
+                if self_pids.insert(child) {
+                    queue.push_back(child);
+                }
+            }
+        }
+    }
+    
+    self_pids
+}
+
 /// 获取所有 Antigravity 进程的 PID（包括主进程和Helper进程）
 fn get_antigravity_pids() -> Vec<u32> {
     let mut system = System::new();
     system.refresh_processes(sysinfo::ProcessesToUpdate::All);
     
-    let current_pid = std::process::id();
+    // Linux 端启用自身进程树排除，防止误杀
+    #[cfg(target_os = "linux")]
+    let self_pids = get_self_and_children_pids(&system);
+    // #[cfg(target_os = "linux")]
+    // crate::modules::logger::log_info(&format!("排除自身进程树: {:?}", self_pids));
+
     let mut pids = Vec::new();
+    let current_pid = std::process::id();
     
     for (pid, process) in system.processes() {
-        // 排除当前进程
-        if pid.as_u32() == current_pid {
-            continue;
+        let pid_u32 = pid.as_u32();
+        
+        #[cfg(target_os = "linux")]
+        {
+            // 排除自身相关进程
+            if self_pids.contains(&pid_u32) {
+                continue;
+            }
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            // 其他平台仅排除自身
+            if pid_u32 == current_pid {
+                continue;
+            }
         }
         
         let exe_path = process.exe()
@@ -81,7 +132,7 @@ fn get_antigravity_pids() -> Vec<u32> {
         {
             // 匹配所有 Antigravity 相关进程（主进程 + Helper 进程）
             if exe_path.contains("antigravity.app") {
-                pids.push(pid.as_u32());
+                pids.push(pid_u32);
             }
         }
         
@@ -89,7 +140,7 @@ fn get_antigravity_pids() -> Vec<u32> {
         {
             let name = process.name().to_string_lossy().to_lowercase();
             if name.starts_with("antigravity") && name.ends_with(".exe") {
-                pids.push(pid.as_u32());
+                pids.push(pid_u32);
             }
         }
         
@@ -107,7 +158,7 @@ fn get_antigravity_pids() -> Vec<u32> {
             };
 
             if is_match {
-                pids.push(pid.as_u32());
+                pids.push(pid_u32);
             }
         }
     }
@@ -230,10 +281,10 @@ pub fn close_antigravity(timeout_secs: u64) -> Result<(), String> {
                         
                         if let Ok(result) = output {
                             if !result.status.success() {
-                                let error = String::from_utf8_lossy(&result.stderr);
-                                if !error.contains("No such process") { // "No matching processes" for killall, "No such process" for kill
-                                    crate::modules::logger::log_error(&format!("SIGKILL 进程 {} 失败: {}", pid, error));
-                                }
+                                 let error = String::from_utf8_lossy(&result.stderr);
+                                 if !error.contains("No such process") { // "No matching processes" for killall, "No such process" for kill
+                                     crate::modules::logger::log_error(&format!("SIGKILL 进程 {} 失败: {}", pid, error));
+                                 }
                             }
                         }
                     }
@@ -250,7 +301,9 @@ pub fn close_antigravity(timeout_secs: u64) -> Result<(), String> {
                 return Ok(());
             }
         } else {
-            crate::modules::logger::log_warn("未找到 Antigravity 进程");
+             // 只有当 pids 为空时才认为没在运行，不要在这里报错，因为可能是已经关闭了
+             crate::modules::logger::log_info("Antigravity 未在运行，无需关闭");
+             return Ok(());
         }
     }
 
@@ -331,11 +384,8 @@ pub fn close_antigravity(timeout_secs: u64) -> Result<(), String> {
                 }
             }
         } else {
-            crate::modules::logger::log_warn("未找到 Antigravity 进程，尝试使用 pkill (Case-Insensitive) 回退");
-            let _ = Command::new("pkill")
-                .args(["-i", "-9", "antigravity"])
-                .output();
-            thread::sleep(Duration::from_secs(1));
+            // pids 为空，说明没有检测到进程，或者都被排除逻辑排除了
+            crate::modules::logger::log_info("未找到需要关闭的 Antigravity 进程 (可能已被过滤或未运行)");
         }
     }
     
