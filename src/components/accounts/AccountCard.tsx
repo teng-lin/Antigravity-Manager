@@ -1,6 +1,8 @@
 import { ArrowRightLeft, RefreshCw, Trash2, Download, Info, Lock, Ban } from 'lucide-react';
 import { Account } from '../../types/account';
 import { getQuotaColor, formatTimeRemaining } from '../../utils/format';
+import { formatModelName } from '../../utils/model';
+import { useTranslation } from 'react-i18next';
 
 interface AccountCardProps {
     account: Account;
@@ -16,14 +18,9 @@ interface AccountCardProps {
     onDelete: () => void;
 }
 
-import { useTranslation } from 'react-i18next';
-
 function AccountCard({ account, selected, onSelect, isCurrent, isRefreshing, isSwitching = false, onSwitch, onRefresh, onViewDetails, onExport, onDelete }: AccountCardProps) {
     const { t } = useTranslation();
-    const geminiProModel = account.quota?.models.find(m => m.name === 'gemini-3-pro-high');
-    const geminiFlashModel = account.quota?.models.find(m => m.name === 'gemini-3-flash');
-    const geminiImageModel = account.quota?.models.find(m => m.name === 'gemini-3-pro-image');
-    const claudeModel = account.quota?.models.find(m => m.name === 'claude-sonnet-4-5-thinking');
+    const models = account.quota?.models || [];
 
     const getColorClass = (percentage: number) => {
         const color = getQuotaColor(percentage);
@@ -80,113 +77,29 @@ function AccountCard({ account, selected, onSelect, isCurrent, isRefreshing, isS
                 ) : (
                     <>
                         <div className="grid grid-cols-2 gap-2">
-                            {/* Gemini Pro */}
-                            <div className="relative h-[26px] flex items-center px-1.5 rounded-lg overflow-hidden border border-gray-100/50 dark:border-white/5 bg-gray-50/30 dark:bg-white/5 group/quota">
-                                {geminiProModel && (
+                            {models.map((model) => (
+                                <div key={model.name} className="relative h-[26px] flex items-center px-1.5 rounded-lg overflow-hidden border border-gray-100/50 dark:border-white/5 bg-gray-50/30 dark:bg-white/5 group/quota">
                                     <div
-                                        className={`absolute inset-y-0 left-0 transition-all duration-700 ease-out opacity-15 dark:opacity-20 ${getColorClass(geminiProModel.percentage)}`}
-                                        style={{ width: `${geminiProModel.percentage}%` }}
+                                        className={`absolute inset-y-0 left-0 transition-all duration-700 ease-out opacity-15 dark:opacity-20 ${getColorClass(model.percentage)}`}
+                                        style={{ width: `${model.percentage}%` }}
                                     />
-                                )}
-                                <div className="relative z-10 w-full flex items-center justify-between text-[10px] font-mono leading-none">
-                                    <span className="text-gray-500 dark:text-gray-400 font-bold truncate pr-1" title="Gemini 3 Pro">G3 Pro</span>
-                                    {geminiProModel ? (
+                                    <div className="relative z-10 w-full flex items-center justify-between text-[10px] font-mono leading-none">
+                                        <span className="text-gray-500 dark:text-gray-400 font-bold truncate pr-1" title={model.name}>
+                                            {formatModelName(model.name)}
+                                        </span>
                                         <div className="flex items-center gap-1 shrink-0">
-                                            {geminiProModel.reset_time && (
+                                            {model.reset_time && (
                                                 <span className="text-gray-400 dark:text-gray-500 scale-90 opacity-40 group-hover/quota:opacity-100 transition-opacity whitespace-nowrap">
-                                                    R:{formatTimeRemaining(geminiProModel.reset_time)}
+                                                    R:{formatTimeRemaining(model.reset_time)}
                                                 </span>
                                             )}
-                                            <span className={`font-bold ${getQuotaColor(geminiProModel.percentage) === 'success' ? 'text-emerald-600 dark:text-emerald-400' : getQuotaColor(geminiProModel.percentage) === 'warning' ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                                                {(geminiProModel.percentage || 0)}%
+                                            <span className={`font-bold ${getQuotaColor(model.percentage) === 'success' ? 'text-emerald-600 dark:text-emerald-400' : getQuotaColor(model.percentage) === 'warning' ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                                {(model.percentage || 0)}%
                                             </span>
                                         </div>
-                                    ) : (
-                                        <span className="text-gray-300 dark:text-gray-600 italic scale-90">N/A</span>
-                                    )}
+                                    </div>
                                 </div>
-                            </div>
-
-                            {/* Gemini Flash */}
-                            <div className="relative h-[26px] flex items-center px-1.5 rounded-lg overflow-hidden border border-gray-100/50 dark:border-white/5 bg-gray-50/30 dark:bg-white/5 group/quota">
-                                {geminiFlashModel && (
-                                    <div
-                                        className={`absolute inset-y-0 left-0 transition-all duration-700 ease-out opacity-15 dark:opacity-20 ${getColorClass(geminiFlashModel.percentage)}`}
-                                        style={{ width: `${geminiFlashModel.percentage}%` }}
-                                    />
-                                )}
-                                <div className="relative z-10 w-full flex items-center justify-between text-[10px] font-mono leading-none">
-                                    <span className="text-gray-500 dark:text-gray-400 font-bold truncate pr-1" title="Gemini 3 Flash">G3 Flash</span>
-                                    {geminiFlashModel ? (
-                                        <div className="flex items-center gap-1 shrink-0">
-                                            {geminiFlashModel.reset_time && (
-                                                <span className="text-gray-400 dark:text-gray-500 scale-90 opacity-40 group-hover/quota:opacity-100 transition-opacity whitespace-nowrap">
-                                                    R:{formatTimeRemaining(geminiFlashModel.reset_time)}
-                                                </span>
-                                            )}
-                                            <span className={`font-bold ${getQuotaColor(geminiFlashModel.percentage) === 'success' ? 'text-emerald-600 dark:text-emerald-400' : getQuotaColor(geminiFlashModel.percentage) === 'warning' ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                                                {(geminiFlashModel.percentage || 0)}%
-                                            </span>
-                                        </div>
-                                    ) : (
-                                        <span className="text-gray-300 dark:text-gray-600 italic scale-90">N/A</span>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Gemini Image */}
-                            <div className="relative h-[26px] flex items-center px-1.5 rounded-lg overflow-hidden border border-gray-100/50 dark:border-white/5 bg-gray-50/30 dark:bg-white/5 group/quota">
-                                {geminiImageModel && (
-                                    <div
-                                        className={`absolute inset-y-0 left-0 transition-all duration-700 ease-out opacity-15 dark:opacity-20 ${getColorClass(geminiImageModel.percentage)}`}
-                                        style={{ width: `${geminiImageModel.percentage}%` }}
-                                    />
-                                )}
-                                <div className="relative z-10 w-full flex items-center justify-between text-[10px] font-mono leading-none">
-                                    <span className="text-gray-500 dark:text-gray-400 font-bold truncate pr-1" title="Gemini 3 Pro Image">G3 Image</span>
-                                    {geminiImageModel ? (
-                                        <div className="flex items-center gap-1 shrink-0">
-                                            {geminiImageModel.reset_time && (
-                                                <span className="text-gray-400 dark:text-gray-500 scale-90 opacity-40 group-hover/quota:opacity-100 transition-opacity whitespace-nowrap">
-                                                    R:{formatTimeRemaining(geminiImageModel.reset_time)}
-                                                </span>
-                                            )}
-                                            <span className={`font-bold ${getQuotaColor(geminiImageModel.percentage) === 'success' ? 'text-emerald-600 dark:text-emerald-400' : getQuotaColor(geminiImageModel.percentage) === 'warning' ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                                                {(geminiImageModel.percentage || 0)}%
-                                            </span>
-                                        </div>
-                                    ) : (
-                                        <span className="text-gray-300 dark:text-gray-600 italic scale-90">N/A</span>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Claude */}
-                            <div className="relative h-[26px] flex items-center px-1.5 rounded-lg overflow-hidden border border-gray-100/50 dark:border-white/5 bg-gray-50/30 dark:bg-white/5 group/quota">
-                                {claudeModel && (
-                                    <div
-                                        className={`absolute inset-y-0 left-0 transition-all duration-700 ease-out opacity-15 dark:opacity-20 ${getColorClass(claudeModel.percentage)}`}
-                                        style={{ width: `${claudeModel.percentage}%` }}
-                                    />
-                                )}
-                                <div className="relative z-10 w-full flex items-center justify-between text-[10px] font-mono leading-none">
-                                    <span className="text-gray-500 dark:text-gray-400 font-bold truncate pr-1" title="Claude-sonnet-4.5">Claude 4.5</span>
-                                    {claudeModel ? (
-                                        <div className="flex items-center gap-1 shrink-0">
-                                            {claudeModel.reset_time && (
-                                                <span className="text-gray-400 dark:text-gray-500 scale-90 opacity-40 group-hover/quota:opacity-100 transition-opacity whitespace-nowrap">
-                                                    R:{formatTimeRemaining(claudeModel.reset_time)}
-                                                </span>
-                                            )}
-                                            <span className={`font-bold ${getQuotaColor(claudeModel.percentage) === 'success' ? 'text-emerald-600 dark:text-emerald-400' : getQuotaColor(claudeModel.percentage) === 'warning' ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                                                {(claudeModel.percentage || 0)}%
-                                            </span>
-                                        </div>
-                                    ) : (
-                                        <span className="text-gray-300 dark:text-gray-600 italic scale-90">N/A</span>
-                                    )}
-                                </div>
-                            </div>
+                            ))}
                         </div>
                     </>
                 )}
