@@ -32,3 +32,6 @@ src-tauri/.env
 .env
 .env.*
 environment/
+
+# Git worktrees
+.worktrees
