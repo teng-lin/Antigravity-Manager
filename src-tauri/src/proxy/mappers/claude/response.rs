@@ -65,6 +65,26 @@ impl NonStreamingProcessor {
 
         // 1. FunctionCall 处理
         if let Some(fc) = &part.function_call {
+            // 生成 tool_use id (只生成一次，避免缓存键不匹配)
+            let tool_id = fc.id.clone().unwrap_or_else(|| {
+                format!(
+                    "{}-{}",
+                    fc.name,
+                    crate::proxy::common::utils::generate_random_id()
+                )
+            });
+
+            // Fix for issue #65: Cache thinking context before flushing
+            // Cache signature from either the thinking block OR the tool call itself
+            let sig_to_cache = self.thinking_signature.as_ref().or(signature.as_ref());
+            if let Some(sig) = sig_to_cache {
+                crate::proxy::common::reasoning_cache::cache_thinking_for_tool(
+                    &tool_id,
+                    self.thinking_builder.clone(),
+                    sig.clone(),
+                );
+            }
+
             self.flush_thinking();
             self.flush_text();
 
@@ -77,15 +97,6 @@ impl NonStreamingProcessor {
             }
 
             self.has_tool_call = true;
-
-            // 生成 tool_use id
-            let tool_id = fc.id.clone().unwrap_or_else(|| {
-                format!(
-                    "{}-{}",
-                    fc.name,
-                    crate::proxy::common::utils::generate_random_id()
-                )
-            });
 
             let mut tool_use = ContentBlock::ToolUse {
                 id: tool_id,

@@ -184,11 +184,22 @@ fn build_contents(
                 for item in blocks {
                     match item {
                         ContentBlock::Text { text } => {
-                            if text != "(no content)" {
+                            if text != "(no content)" && !text.trim().is_empty() {
                                 parts.push(json!({"text": text}));
                             }
                         }
                         ContentBlock::Thinking { thinking, signature } => {
+                            // Fix for issue #65: Skip thinking blocks from historical messages
+                            // Thinking signatures will be injected into tool calls instead
+                            if role == "model" && i != msg_count - 1 {
+                                continue;
+                            }
+
+                            // Skip empty thinking blocks (can happen with trailingSignature)
+                            if thinking.trim().is_empty() && signature.is_none() {
+                                continue;
+                            }
+
                             let mut part = json!({
                                 "text": thinking,
                                 "thought": true
@@ -220,7 +231,13 @@ fn build_contents(
                             // 存储 id -> name 映射
                             tool_id_to_name.insert(id.clone(), name.clone());
 
-                            if let Some(sig) = signature {
+                            // Fix for issue #65: Inject cached thinking signature
+                            // Priority: use existing signature, fallback to cached signature
+                            let final_signature = signature.clone().or_else(|| {
+                                crate::proxy::common::reasoning_cache::get_thinking_signature(id)
+                            });
+
+                            if let Some(sig) = final_signature {
                                 part["thoughtSignature"] = json!(sig);
                             }
                             parts.push(part);
@@ -252,7 +269,7 @@ fn build_contents(
             let has_thought_part = parts.iter().any(|p| {
                 p.get("thought").and_then(|v| v.as_bool()).unwrap_or(false)
             });
-            
+
             if !has_thought_part {
                 // Prepend a dummy thinking block to satisfy Gemini v1internal requirements
                 parts.insert(0, json!({
@@ -260,6 +277,12 @@ fn build_contents(
                     "thought": true
                 }));
             }
+        }
+
+        // Fix for issue #65: Skip messages with empty content arrays to avoid deserialization errors
+        // This can happen when we filter out all thinking blocks from a historical assistant message
+        if parts.is_empty() {
+            continue;
         }
 
         contents.push(json!({

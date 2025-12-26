@@ -17,7 +17,7 @@ pub enum BlockType {
 
 /// 签名管理器
 pub struct SignatureManager {
-    pending: Option<String>,
+    pub(crate) pending: Option<String>,
 }
 
 impl SignatureManager {
@@ -297,6 +297,27 @@ impl<'a> PartProcessor<'a> {
 
         // 1. FunctionCall 处理
         if let Some(fc) = &part.function_call {
+            // 生成 tool_use id (只生成一次，避免缓存键不匹配)
+            let tool_id = fc.id.clone().unwrap_or_else(|| {
+                format!("{}-{}", fc.name, crate::proxy::common::utils::generate_random_id())
+            });
+
+            // Fix for issue #65: Cache signature from thinking block OR tool call itself
+            let sig_to_cache = if self.state.signatures.has_pending() {
+                self.state.signatures.pending.clone()
+            } else {
+                signature.clone()
+            };
+
+            if let Some(sig) = sig_to_cache {
+                // Cache with empty thinking content for now (streaming doesn't accumulate text)
+                crate::proxy::common::reasoning_cache::cache_thinking_for_tool(
+                    &tool_id,
+                    String::new(),
+                    sig,
+                );
+            }
+
             // 先处理 trailingSignature (B4/C3 场景)
             if self.state.has_trailing_signature() {
                 chunks.extend(self.state.end_block());
@@ -315,7 +336,7 @@ impl<'a> PartProcessor<'a> {
                 }
             }
 
-            chunks.extend(self.process_function_call(fc, signature));
+            chunks.extend(self.process_function_call(fc, &tool_id, signature));
             return chunks;
         }
 
@@ -448,14 +469,10 @@ impl<'a> PartProcessor<'a> {
 
     /// 处理 FunctionCall
     /// 处理 FunctionCall
-    fn process_function_call(&mut self, fc: &FunctionCall, signature: Option<String>) -> Vec<Bytes> {
+    fn process_function_call(&mut self, fc: &FunctionCall, tool_id: &str, signature: Option<String>) -> Vec<Bytes> {
         let mut chunks = Vec::new();
 
         self.state.mark_tool_used();
-
-        let tool_id = fc.id.clone().unwrap_or_else(|| {
-            format!("{}-{}", fc.name, crate::proxy::common::utils::generate_random_id())
-        });
 
         // 1. 发送 content_block_start (input 为空对象)
         let mut tool_use = json!({
